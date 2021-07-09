@@ -38,7 +38,7 @@ AUTHOR = "Feast"
 REQUIRES_PYTHON = ">=3.6.0"
 
 REQUIRED = [
-    "Click==7.*",
+    "Click>=7.*",
     "colorama>=0.3.9",
     "fastavro>=1.1.0",
     "google-api-core>=1.23.0",

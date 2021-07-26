@@ -40,6 +40,9 @@ def assert_offline_store_supports_data_source(
     ) or (
         isinstance(offline_store_config, BigQueryOfflineStoreConfig)
         and isinstance(data_source, BigQuerySource)
+    ) or (
+        isinstance(offline_store_config, SqlServerOfflineStoreConfig)
+        and isinstance(data_source, SqlServerOfflineStore)
     ):
         return
     raise FeastOfflineStoreUnsupportedDataSource(

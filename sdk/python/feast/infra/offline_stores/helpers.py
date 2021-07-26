@@ -1,4 +1,4 @@
-from feast.data_source import BigQuerySource, DataSource, FileSource
+from feast.data_source import BigQuerySource, DataSource, FileSource, SqlServerSource
 from feast.errors import FeastOfflineStoreUnsupportedDataSource
 from feast.infra.offline_stores.offline_store import OfflineStore
 from feast.repo_config import (
@@ -42,7 +42,7 @@ def assert_offline_store_supports_data_source(
         and isinstance(data_source, BigQuerySource)
     ) or (
         isinstance(offline_store_config, SqlServerOfflineStoreConfig)
-        and isinstance(data_source, SqlServerOfflineStore)
+        and isinstance(data_source, SqlServerSource)
     ):
         return
     raise FeastOfflineStoreUnsupportedDataSource(

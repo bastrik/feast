@@ -13,12 +13,15 @@
 # limitations under the License.
 
 import uuid
+import os
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryFile
 from typing import Callable, List, Optional
 from urllib.parse import urlparse
+
+from google.protobuf.descriptor import Error
 
 from feast.entity import Entity
 from feast.errors import (
@@ -56,13 +59,15 @@ class Registry:
         uri = urlparse(registry_path)
         if uri.scheme == "gs":
             self._registry_store: RegistryStore = GCSRegistryStore(registry_path)
+        elif uri.scheme == "az":
+            self._registry_store = AzBlobRegistryStore(registry_path)
         elif uri.scheme == "file" or uri.scheme == "":
             self._registry_store = LocalRegistryStore(
                 repo_path=repo_path, registry_path_string=registry_path
             )
         else:
             raise Exception(
-                f"Registry path {registry_path} has unsupported scheme {uri.scheme}. Supported schemes are file and gs."
+                f"Registry path {registry_path} has unsupported scheme {uri.scheme}. Supported schemes are file, gs and az (azure)."
             )
         self.cached_registry_proto_ttl = cache_ttl
         return
@@ -536,4 +541,75 @@ class GCSRegistryStore(RegistryStore):
         file_obj.write(registry_proto.SerializeToString())
         file_obj.seek(0)
         blob.upload_from_file(file_obj)
+        return
+
+
+class AzBlobRegistryStore(RegistryStore):
+    def __init__(self, uri: str):
+        try:
+            from azure.storage.blob import BlobClient
+            import logging
+        except ImportError as e:
+            from feast.errors import FeastExtrasDependencyImportError
+
+            raise FeastExtrasDependencyImportError("az", str(e))
+
+        self._uri = urlparse(uri)
+        self._container = self._uri.hostname
+        self._path = self._uri.path.lstrip("/")
+
+        try:
+            # turn the verbosity of the blob client to warning and above (this reduces verbosity)
+            my_logger = logging.getLogger("logger_name")
+            my_logger.setLevel(logging.WARNING)
+            conn_string = os.getenv("FEAST_AZ_STORAGE_CONNECTION_STRING")
+            self.blob = BlobClient.from_connection_string(
+                conn_str=conn_string,
+                container_name=self._container,
+                blob_name=self._path,
+                logger=my_logger,
+            )
+        except:
+            raise EnvironmentError(
+                "ERROR: connecting to blob. Have you created a FEAST_AZ_STORAGE_CONNECTION_STRING environment variable?"
+            )
+
+        return
+
+    def get_registry_proto(self):
+        file_obj = TemporaryFile()
+        registry_proto = RegistryProto()
+
+        if self.blob.exists():
+            download_stream = self.blob.download_blob()
+            file_obj.write(download_stream.readall())
+
+            file_obj.seek(0)
+            registry_proto.ParseFromString(file_obj.read())
+            return registry_proto
+        raise FileNotFoundError(
+            f'Registry not found at path "{self._uri.geturl()}". Have you run "feast apply"?'
+        )
+
+    def update_registry_proto(
+        self, updater: Optional[Callable[[RegistryProto], RegistryProto]] = None
+    ):
+        try:
+            registry_proto = self.get_registry_proto()
+        except FileNotFoundError:
+            registry_proto = RegistryProto()
+            registry_proto.registry_schema_version = REGISTRY_SCHEMA_VERSION
+        if updater:
+            registry_proto = updater(registry_proto)
+        self._write_registry(registry_proto)
+        return
+
+    def _write_registry(self, registry_proto: RegistryProto):
+        registry_proto.version_id = str(uuid.uuid4())
+        registry_proto.last_updated.FromDatetime(datetime.utcnow())
+
+        file_obj = TemporaryFile()
+        file_obj.write(registry_proto.SerializeToString())
+        file_obj.seek(0)
+        self.blob.upload_blob(file_obj, overwrite=True)
         return

@@ -118,8 +118,8 @@ repo_root = (
         .decode("utf-8")
 )
 README_FILE = os.path.join(repo_root, "README.md")
-with open(README_FILE, "r") as f:
-    LONG_DESCRIPTION = f.read()
+# with open(README_FILE, "r") as f:
+LONG_DESCRIPTION = "Feast Feast Feast"
 
 # Add Support for parsing tags that have a prefix containing '/' (ie 'sdk/go') to setuptools_scm.
 # Regex modified from default tag regex in:
